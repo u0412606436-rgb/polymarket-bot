@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polymarket AI Bot</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', 'Segoe UI', sans-serif; background: #0d1421; color: #a6b0c3; min-height: 100vh; }
+
+header {
+  background: #0d1421;
+  padding: 16px 28px;
+  border-bottom: 1px solid #222b3e;
+  display: flex; align-items: center; justify-content: space-between;
+}
+header h1 { font-size: 1.2rem; color: #fff; font-weight: 700; }
+header h1 span { color: #3861fb; }
+.header-status { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #58667e; display: inline-block; }
+.dot.green  { background: #16c784; }
+.dot.yellow { background: #f0b90b; animation: pulse 1s infinite; }
+.dot.red    { background: #ea3943; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.page { max-width: 900px; margin: 0 auto; padding: 28px 20px; }
+
+/* Budget bar */
+.budget-bar {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  margin-bottom: 24px;
+}
+.budget-card {
+  background: #17202e; border: 1px solid #222b3e; border-radius: 10px;
+  padding: 16px; text-align: center;
+}
+.budget-card .label { font-size: 0.7rem; color: #58667e; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+.budget-card .value { font-size: 1.4rem; font-weight: 700; color: #fff; }
+.budget-card.balance .value { color: #16c784; }
+.budget-card.locked  .value { color: #f0b90b; }
+.budget-card.won     .value { color: #3861fb; }
+.budget-card.lost    .value { color: #ea3943; }
+
+/* Control panel */
+.control-panel {
+  background: #17202e; border: 1px solid #222b3e; border-radius: 10px;
+  padding: 20px; margin-bottom: 24px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+}
+.control-info { font-size: 0.82rem; line-height: 1.9; color: #58667e; }
+.control-info strong { color: #a6b0c3; }
+.control-info span.highlight { color: #3861fb; }
+
+.btn-group { display: flex; gap: 10px; flex-shrink: 0; }
+.btn {
+  padding: 10px 28px; border-radius: 8px; border: none;
+  font-size: 0.9rem; font-weight: 700; cursor: pointer;
+  transition: filter 0.15s, transform 0.1s;
+}
+.btn:active { transform: scale(0.97); }
+.btn:hover  { filter: brightness(1.15); }
+.btn-start  { background: #16c784; color: #0d1421; }
+.btn-stop   { background: #ea3943; color: #fff; }
+.btn-reset  { background: #222b3e; color: #a6b0c3; font-size: 0.8rem; padding: 10px 18px; }
+.btn-resolve { background: #3861fb; color: #fff; font-size: 0.8rem; padding: 10px 18px; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Bets section */
+.section-title {
+  font-size: 0.72rem; color: #58667e;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  font-weight: 600; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 10px;
+}
+.section-title .count {
+  background: rgba(56,97,251,0.15); color: #3861fb;
+  padding: 2px 10px; border-radius: 20px; font-size: 0.7rem;
+  border: 1px solid rgba(56,97,251,0.3);
+}
+
+.bet-list { display: flex; flex-direction: column; gap: 10px; }
+
+.bet-card {
+  background: #17202e; border: 1px solid #222b3e; border-radius: 10px;
+  padding: 16px 18px;
+}
+.bet-card.win  { border-left: 3px solid #16c784; }
+.bet-card.loss { border-left: 3px solid #ea3943; }
+.bet-card.pending { border-left: 3px solid #f0b90b; }
+
+.bet-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.bet-market { font-size: 0.88rem; color: #e6eaf0; line-height: 1.4; flex: 1; }
+.bet-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+
+.status-tag {
+  padding: 2px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.status-pending { background: rgba(240,185,11,0.1);  color: #f0b90b; border: 1px solid rgba(240,185,11,0.25); }
+.status-win     { background: rgba(22,199,132,0.12); color: #16c784; border: 1px solid rgba(22,199,132,0.3); }
+.status-loss    { background: rgba(234,57,67,0.1);   color: #ea3943; border: 1px solid rgba(234,57,67,0.25); }
+
+.bet-meta { display: flex; gap: 16px; font-size: 0.78rem; color: #58667e; flex-wrap: wrap; margin-bottom: 8px; }
+.bet-meta span strong { color: #a6b0c3; }
+.outcome-yes   { color: #16c784; font-weight: 600; }
+.outcome-no    { color: #ea3943; font-weight: 600; }
+.outcome-other { color: #f0b90b; font-weight: 600; }
+
+.claude-reason {
+  background: rgba(56,97,251,0.07); border: 1px solid rgba(56,97,251,0.15);
+  border-radius: 6px; padding: 8px 12px;
+  font-size: 0.78rem; color: #7b8ec8; line-height: 1.5;
+}
+.claude-reason::before { content: "AI: "; color: #3861fb; font-weight: 600; }
+
+.empty-state {
+  background: #17202e; border: 1px solid #222b3e; border-radius: 10px;
+  padding: 40px; text-align: center;
+  color: #3a4356; font-size: 0.88rem; line-height: 1.8;
+}
+
+/* Toast */
+#toast {
+  position: fixed; bottom: 22px; right: 22px;
+  padding: 11px 18px; border-radius: 8px; font-size: 0.84rem;
+  display: none; z-index: 9999; max-width: 340px; line-height: 1.4;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+}
+#toast.success { background: rgba(22,199,132,0.15); color: #16c784; border: 1px solid rgba(22,199,132,0.35); }
+#toast.error   { background: rgba(234,57,67,0.15);  color: #ea3943; border: 1px solid rgba(234,57,67,0.35); }
+#toast.info    { background: rgba(56,97,251,0.15);  color: #3861fb; border: 1px solid rgba(56,97,251,0.35); }
+
+@media (max-width: 600px) {
+  .budget-bar { grid-template-columns: repeat(2, 1fr); }
+  .control-panel { flex-direction: column; }
+  .btn-group { width: 100%; flex-wrap: wrap; }
+  .btn { flex: 1; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Polymarket <span>AI</span> Bot</h1>
+  <div class="header-status">
+    <span class="dot" id="status-dot"></span>
+    <span id="status-text">Loading...</span>
+  </div>
+</header>
+
+<div class="page">
+
+  <!-- Budget -->
+  <div class="budget-bar">
+    <div class="budget-card balance">
+      <div class="label">Balance</div>
+      <div class="value" id="b-balance">$—</div>
+    </div>
+    <div class="budget-card locked">
+      <div class="label">In Bets</div>
+      <div class="value" id="b-locked">$—</div>
+    </div>
+    <div class="budget-card won">
+      <div class="label">Won</div>
+      <div class="value" id="b-won">$—</div>
+    </div>
+    <div class="budget-card lost">
+      <div class="label">Lost</div>
+      <div class="value" id="b-lost">$—</div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="control-panel">
+    <div class="control-info">
+      Status: <strong id="ctrl-status">—</strong><br>
+      Last run: <strong id="ctrl-last">—</strong><br>
+      Next run: <strong id="ctrl-next" class="highlight">—</strong><br>
+      Markets: <strong id="ctrl-markets">—</strong> &nbsp;|&nbsp; Candidates: <strong id="ctrl-candidates">—</strong>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-resolve" onclick="resolveNow()">Check Results</button>
+      <button class="btn btn-reset"   onclick="resetAll()">Reset</button>
+      <button class="btn btn-stop"    id="btn-stop"  onclick="stopBot()"  style="display:none">Stop</button>
+      <button class="btn btn-start"   id="btn-start" onclick="startBot()">Start</button>
+    </div>
+  </div>
+
+  <!-- Bets -->
+  <div class="section-title">
+    Active &amp; Past Bets
+    <span class="count" id="bets-count">0</span>
+  </div>
+  <div class="bet-list" id="bet-list">
+    <div class="empty-state">No bets yet.<br>Press <strong>Start</strong> to let the AI find smart picks.</div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+let _loopAlive = false;
+
+function fmt(n) { return '$' + Number(n).toFixed(2); }
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Status ────────────────────────────────────────────────
+function refreshStatus() {
+  fetch('/api/status').then(r => r.json()).then(s => {
+    _loopAlive = s.loop_alive;
+    const statusMap = {
+      running:  { dot: 'yellow', text: 'Running cycle...' },
+      idle:     { dot: 'green',  text: 'Idle — waiting for next run' },
+      stopped:  { dot: 'red',    text: 'Stopped' },
+      error:    { dot: 'red',    text: 'Error: ' + (s.last_error || '?') },
+    };
+    const info = statusMap[s.status] || { dot: '', text: s.status };
+    document.getElementById('status-dot').className  = 'dot ' + info.dot;
+    document.getElementById('status-text').textContent = info.text;
+
+    document.getElementById('ctrl-status').textContent     = s.status;
+    document.getElementById('ctrl-last').textContent       = s.last_run    || '—';
+    document.getElementById('ctrl-next').textContent       = s.next_run    || '—';
+    document.getElementById('ctrl-markets').textContent    = s.markets_count    || '—';
+    document.getElementById('ctrl-candidates').textContent = s.candidates_count || '—';
+
+    document.getElementById('btn-start').style.display = s.loop_alive ? 'none' : '';
+    document.getElementById('btn-stop').style.display  = s.loop_alive ? ''     : 'none';
+  });
+}
+
+// ── Budget ────────────────────────────────────────────────
+function refreshBudget() {
+  fetch('/api/budget').then(r => r.json()).then(b => {
+    document.getElementById('b-balance').textContent = fmt(b.balance);
+    document.getElementById('b-locked').textContent  = fmt(b.locked);
+    document.getElementById('b-won').textContent     = fmt(b.won);
+    document.getElementById('b-lost').textContent    = fmt(b.lost);
+  });
+}
+
+// ── Bets ──────────────────────────────────────────────────
+function refreshBets() {
+  fetch('/api/bets').then(r => r.json()).then(bets => {
+    document.getElementById('bets-count').textContent = bets.length;
+    const list = document.getElementById('bet-list');
+
+    if (!bets.length) {
+      list.innerHTML = '<div class="empty-state">No bets yet.<br>Press <strong>Start</strong> to let the AI find smart picks.</div>';
+      return;
+    }
+
+    // newest first
+    const sorted = [...bets].reverse();
+    list.innerHTML = sorted.map(b => {
+      const outcomeClass = b.outcome === 'Yes' ? 'outcome-yes' : b.outcome === 'No' ? 'outcome-no' : 'outcome-other';
+      const statusClass  = 'status-' + b.status;
+      const statusLabel  = b.status === 'win' ? 'Won' : b.status === 'loss' ? 'Lost' : 'Pending';
+      const payout = b.payout_received != null ? ` → <strong style="color:#16c784">+${fmt(b.payout_received)}</strong>` : '';
+      const reason = b.claude_reason ? `<div class="claude-reason">${escHtml(b.claude_reason)}</div>` : '';
+
+      return `
+      <div class="bet-card ${b.status}">
+        <div class="bet-top">
+          <div class="bet-market">${escHtml(b.market)}</div>
+          <div class="bet-right">
+            <span class="status-tag ${statusClass}">${statusLabel}</span>
+          </div>
+        </div>
+        <div class="bet-meta">
+          <span>Outcome: <strong class="${outcomeClass}">${escHtml(b.outcome)}</strong></span>
+          <span>Prob: <strong>${b.probability}%</strong></span>
+          <span>Bet: <strong style="color:#f0b90b">${fmt(b.bet_size)}</strong></span>
+          <span>Payout: <strong>${b.payout_x}x</strong>${payout}</span>
+          <span>Ends: <strong>${b.end_date || '—'}</strong></span>
+          ${b.current_prob != null ? `<span>Current: <strong>${b.current_prob}%</strong></span>` : ''}
+        </div>
+        ${reason}
+      </div>`;
+    }).join('');
+  });
+}
+
+// ── Actions ───────────────────────────────────────────────
+function startBot() {
+  fetch('/api/start', { method: 'POST' }).then(r => r.json()).then(res => {
+    showToast(res.status === 'already_running' ? 'Already running' : 'Bot started', 'success');
+    refreshStatus();
+  });
+}
+
+function stopBot() {
+  fetch('/api/stop', { method: 'POST' }).then(() => {
+    showToast('Bot stopped', 'info');
+    refreshStatus();
+  });
+}
+
+function resolveNow() {
+  fetch('/api/resolve', { method: 'POST' }).then(() => {
+    showToast('Checking bet results...', 'info');
+    setTimeout(() => { refreshBets(); refreshBudget(); }, 4000);
+  });
+}
+
+function resetAll() {
+  if (!confirm('Reset budget to $1000 and clear all bets?')) return;
+  fetch('/api/reset', { method: 'POST' }).then(() => {
+    showToast('Reset complete', 'info');
+    refreshBudget(); refreshBets(); refreshStatus();
+  });
+}
+
+// ── Toast ─────────────────────────────────────────────────
+function showToast(msg, type = 'info') {
+  const t = document.getElementById('toast');
+  t.className = type; t.textContent = msg; t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 4000);
+}
+
+// ── Init ──────────────────────────────────────────────────
+function tick() { refreshStatus(); refreshBudget(); refreshBets(); }
+tick();
+setInterval(tick, 5000);
+</script>
+</body>
+</html>

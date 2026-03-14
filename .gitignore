@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+firebase_key.json
+bets.json
+budget.json
+*.xlsx
+*.csv
