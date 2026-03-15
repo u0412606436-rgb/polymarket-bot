@@ -242,6 +242,16 @@ def api_resolve():
     threading.Thread(target=resolve_bets, daemon=True).start()
     return jsonify({"status": "checking"})
 
+@app.route("/api/ping")
+def api_ping():
+    import socket
+    try:
+        socket.getaddrinfo("gamma-api.polymarket.com", 443)
+        return jsonify({"dns": "ok"})
+    except Exception as e:
+        return jsonify({"dns": "fail", "error": str(e)})
+
+
 @app.route("/api/reset", methods=["POST"])
 def api_reset():
     from firebase_db import reset_bets
