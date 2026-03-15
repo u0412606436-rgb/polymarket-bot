@@ -12,7 +12,7 @@ def _init():
         return _db
     if not firebase_admin._apps:
         # Railway: set FIREBASE_CREDENTIALS env var to the full JSON string
-        cred_json = os.environ.get("FIREBASE_CREDENTIALS")
+        cred_json = os.environ.get("FIREBASE_CREDENTIALS", "").strip()
         if cred_json:
             cred = credentials.Certificate(json.loads(cred_json))
         else:
