@@ -1,16 +1,21 @@
+import threading
 import firebase_admin
 from firebase_admin import credentials, firestore
 import json
 import os
 
 _db = None
+_lock = threading.Lock()
 
 
 def _init():
     global _db
     if _db is not None:
         return _db
-    if not firebase_admin._apps:
+    with _lock:
+        if _db is not None:
+            return _db
+        if not firebase_admin._apps:
         # Railway: set FIREBASE_CREDENTIALS env var to the full JSON string
         cred_json = os.environ.get("FIREBASE_CREDENTIALS", "").strip()
         if cred_json:
@@ -20,8 +25,8 @@ def _init():
             cred = credentials.Certificate(
                 os.path.join(os.path.dirname(__file__), "firebase_key.json")
             )
-        firebase_admin.initialize_app(cred)
-    _db = firestore.client()
+            firebase_admin.initialize_app(cred)
+        _db = firestore.client()
     return _db
 
 
