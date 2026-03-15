@@ -5,7 +5,8 @@ PAGE_LIMIT = 100
 PROB_MIN = 0.05  # 5%
 PROB_MAX = 0.10  # 10%
 
-ANTHROPIC_API_KEY = "REDACTED"
+import os
+ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 
 VIRTUAL_BUDGET = 10000.0  # starting virtual dollars
 BET_SIZE_MIN   = 5.0      # min bet per pick
