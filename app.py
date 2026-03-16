@@ -28,17 +28,31 @@ def _default_budget():
     return {"total": VIRTUAL_BUDGET, "balance": VIRTUAL_BUDGET,
             "locked": 0.0, "won": 0.0, "lost": 0.0, "bets_placed": 0}
 
+_cache = {"budget": None, "bets": None, "budget_ts": 0, "bets_ts": 0}
+CACHE_TTL = 30  # seconds
+
 def get_budget():
     from firebase_db import load_budget
-    return load_budget(_default_budget())
+    if time.time() - _cache["budget_ts"] > CACHE_TTL or _cache["budget"] is None:
+        _cache["budget"] = load_budget(_default_budget())
+        _cache["budget_ts"] = time.time()
+    return _cache["budget"]
 
 def save_budget(b):
     from firebase_db import save_budget
     save_budget(b)
+    _cache["budget"] = b
+    _cache["budget_ts"] = time.time()
 
 def get_bets():
     from firebase_db import load_bets
-    return load_bets()
+    if time.time() - _cache["bets_ts"] > CACHE_TTL or _cache["bets"] is None:
+        _cache["bets"] = load_bets()
+        _cache["bets_ts"] = time.time()
+    return _cache["bets"]
+
+def invalidate_bets_cache():
+    _cache["bets_ts"] = 0
 
 
 # ── Place a virtual bet ────────────────────────────────────
@@ -106,6 +120,7 @@ def resolve_bets():
 
     if changed:
         save_budget(budget)
+        invalidate_bets_cache()
 
 
 # ── One betting cycle ──────────────────────────────────────
@@ -182,6 +197,7 @@ def run_cycle():
 
             if place_virtual_bet(bet, budget):
                 add_bet(bet)
+                invalidate_bets_cache()
                 existing_keys.add(token_id)
                 added += 1
                 print(f"[bot] ${bet_size} on {pick['outcome']} "
