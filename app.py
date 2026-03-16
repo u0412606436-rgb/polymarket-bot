@@ -62,18 +62,17 @@ def resolve_bets():
         if bet.get("status") != "pending":
             continue
         try:
-            r = req.post(
-                "https://clob.polymarket.com/midpoints",
-                json={"token_ids": [bet["token_id"]]},
-                timeout=10
+            r = req.get(
+                "https://clob.polymarket.com/prices-history",
+                params={"market": bet["token_id"], "interval": "max", "fidelity": 1},
+                timeout=15
             )
             if r.status_code != 200:
                 continue
-            data  = r.json()
-            mid   = data.get(bet["token_id"]) or data.get("mid")
-            if mid is None:
+            history = r.json().get("history", [])
+            if not history:
                 continue
-            price = float(mid)
+            price = float(history[-1]["p"])
             now   = time.strftime("%Y-%m-%d %H:%M:%S")
 
             if price >= 0.95:
