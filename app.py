@@ -115,7 +115,13 @@ def run_cycle():
     print("[bot] Cycle started")
 
     try:
-        markets = fetch_all_active_markets()
+        try:
+            markets = fetch_all_active_markets()
+        except Exception as net_err:
+            print(f"[bot] Network unavailable, skipping cycle: {net_err}")
+            _state["status"]     = "idle"
+            _state["last_error"] = f"Network error (will retry next cycle): {net_err}"
+            return
         _state["markets_count"] = len(markets)
         print(f"[bot] {len(markets)} markets fetched")
 
