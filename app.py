@@ -22,37 +22,65 @@ _loop_thread = None
 _stop_event  = threading.Event()
 
 
-# ── Budget helpers ─────────────────────────────────────────
+# ── In-memory store (load once from Firebase on startup) ────
 def _default_budget():
     from config import VIRTUAL_BUDGET
     return {"total": VIRTUAL_BUDGET, "balance": VIRTUAL_BUDGET,
             "locked": 0.0, "won": 0.0, "lost": 0.0, "bets_placed": 0}
 
-_cache = {"budget": None, "bets": None, "budget_ts": 0, "bets_ts": 0}
-CACHE_TTL = 30  # seconds
+_mem = {"budget": None, "bets": None}
+
+def _ensure_loaded():
+    """Load from Firebase once per process lifetime."""
+    if _mem["budget"] is None:
+        from firebase_db import load_budget, load_bets
+        try:
+            _mem["budget"] = load_budget(_default_budget())
+            _mem["bets"]   = load_bets()
+        except Exception as e:
+            print(f"[init] Firebase load failed, using defaults: {e}")
+            _mem["budget"] = _default_budget()
+            _mem["bets"]   = []
 
 def get_budget():
-    from firebase_db import load_budget
-    if time.time() - _cache["budget_ts"] > CACHE_TTL or _cache["budget"] is None:
-        _cache["budget"] = load_budget(_default_budget())
-        _cache["budget_ts"] = time.time()
-    return _cache["budget"]
+    _ensure_loaded()
+    return _mem["budget"]
 
 def save_budget(b):
-    from firebase_db import save_budget
-    save_budget(b)
-    _cache["budget"] = b
-    _cache["budget_ts"] = time.time()
+    from firebase_db import save_budget as fb_save
+    _mem["budget"] = b
+    try:
+        fb_save(b)
+    except Exception as e:
+        print(f"[save_budget] Firebase write failed: {e}")
 
 def get_bets():
-    from firebase_db import load_bets
-    if time.time() - _cache["bets_ts"] > CACHE_TTL or _cache["bets"] is None:
-        _cache["bets"] = load_bets()
-        _cache["bets_ts"] = time.time()
-    return _cache["bets"]
+    _ensure_loaded()
+    return _mem["bets"]
 
 def invalidate_bets_cache():
-    _cache["bets_ts"] = 0
+    pass  # no-op, bets live in memory now
+
+def mem_add_bet(bet: dict):
+    from firebase_db import add_bet as fb_add
+    _ensure_loaded()
+    _mem["bets"].append(bet)
+    try:
+        fb_add(bet)
+    except Exception as e:
+        print(f"[add_bet] Firebase write failed: {e}")
+
+def mem_update_bet(token_id: str, fields: dict):
+    from firebase_db import update_bet as fb_update
+    _ensure_loaded()
+    for b in _mem["bets"]:
+        if b.get("token_id") == token_id:
+            b.update(fields)
+            break
+    try:
+        fb_update(token_id, fields)
+    except Exception as e:
+        print(f"[update_bet] Firebase write failed: {e}")
 
 
 # ── Place a virtual bet ────────────────────────────────────
@@ -67,7 +95,6 @@ def place_virtual_bet(bet: dict, budget: dict) -> bool:
 
 # ── Resolve pending bets ───────────────────────────────────
 def resolve_bets():
-    from firebase_db import update_bet
     bets   = get_bets()
     budget = get_budget()
     changed = False
@@ -94,7 +121,7 @@ def resolve_bets():
                 fields = {"status": "win", "resolved_at": now,
                           "current_prob": round(price * 100, 2),
                           "checked_at": now, "payout_received": payout}
-                update_bet(bet["token_id"], fields)
+                mem_update_bet(bet["token_id"], fields)
                 budget["locked"]  = round(budget["locked"]  - bet["bet_size"], 2)
                 budget["balance"] = round(budget["balance"] + payout, 2)
                 budget["won"]     = round(budget["won"]     + payout, 2)
@@ -105,7 +132,7 @@ def resolve_bets():
                 fields = {"status": "loss", "resolved_at": now,
                           "current_prob": round(price * 100, 2),
                           "checked_at": now, "payout_received": 0}
-                update_bet(bet["token_id"], fields)
+                mem_update_bet(bet["token_id"], fields)
                 budget["locked"] = round(budget["locked"] - bet["bet_size"], 2)
                 budget["lost"]   = round(budget["lost"]   + bet["bet_size"], 2)
                 changed = True
@@ -113,7 +140,7 @@ def resolve_bets():
 
             else:
                 fields = {"current_prob": round(price * 100, 2), "checked_at": now}
-                update_bet(bet["token_id"], fields)
+                mem_update_bet(bet["token_id"], fields)
 
         except Exception as e:
             print(f"[resolve error] {e}")
@@ -126,7 +153,7 @@ def resolve_bets():
 # ── One betting cycle ──────────────────────────────────────
 def run_cycle():
     from config import BET_SIZE_MIN, BET_SIZE_MAX
-    from firebase_db import add_bet
+    # add_bet via mem_add_bet
     _state["status"]     = "running"
     _state["last_error"] = None
     print("[bot] Cycle started")
@@ -196,7 +223,7 @@ def run_cycle():
             }
 
             if place_virtual_bet(bet, budget):
-                add_bet(bet)
+                mem_add_bet(bet)
                 invalidate_bets_cache()
                 existing_keys.add(token_id)
                 added += 1
